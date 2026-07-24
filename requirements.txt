@@ -1,2 +1,2 @@
-meow-sdk
+meow-sdk>=0.7,<0.8
 spidev

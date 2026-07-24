@@ -30,7 +30,10 @@ import os       # os.environ lets us read environment variables (like the API ke
 import sys      # sys.exit() lets us stop the program with an error code
 import time     # time.sleep() lets us pause between sensor readings
 import spidev   # spidev lets Python talk to SPI devices (like our MCP3008 ADC chip)
-from meow_sdk import Meow, MeowError  # Meow sends data to the cloud; MeowError catches API failures
+# Meow sends data to the cloud; MeowError catches API failures. AuthError and
+# RateLimitError are more specific kinds of MeowError, so we can tell you whether
+# your key was rejected or you're just sending too fast.
+from meow_sdk import Meow, MeowError, AuthError, RateLimitError
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -178,10 +181,24 @@ def main():
             # Print a human-readable summary to the terminal
             status = "DRY" if data["is_dry"] else "OK"
             print(f"Moisture: {pct}% (raw {raw_moisture}) | Light: {raw_light} | {status}")
+        except AuthError as e:
+            # A rejected key won't start working on the next reading, so stop
+            # rather than filling the terminal with the same error all day.
+            print(f"API key rejected: {e}")
+            if e.hint:
+                print(f"Hint: {e.hint}")
+            sys.exit(1)
+        except RateLimitError as e:
+            # Sending faster than your plan allows — wait it out and continue.
+            print(f"Rate limited: {e}")
+            time.sleep(60)
         except MeowError as e:
-            # If the API call fails (network issue, bad key, etc.), print the error
+            # Any other API failure (network issue, server problem), print the error
             # but keep running — we don't want a temporary glitch to kill the monitor
             print(f"Send failed: {e}")
+            # .hint is a plain-English suggestion from the API, when it has one.
+            if e.hint:
+                print(f"Hint: {e.hint}")
 
         # Wait before the next reading. Default is 60 seconds.
         # Shorter intervals give more data but use more API calls.
